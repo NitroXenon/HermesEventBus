@@ -1,19 +1,17 @@
 /**
- *
  * Copyright 2016 Xiaofei
- *
+ * <p>
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package xiaofei.library.hermeseventbus;
@@ -29,7 +27,6 @@ import xiaofei.library.concurrentutils.ObjectCanary2;
 import xiaofei.library.concurrentutils.util.Action;
 import xiaofei.library.concurrentutils.util.Function;
 import xiaofei.library.hermes.Hermes;
-import xiaofei.library.hermes.HermesListener;
 import xiaofei.library.hermes.HermesService;
 
 /**
@@ -132,7 +129,7 @@ public class HermesEventBus {
         }
     }
 
-    public void setHermesListener(xiaofei.library.hermes.HermesListener hermesListener){
+    public void setHermesListener(xiaofei.library.hermes.HermesListener hermesListener) {
         if (mMainProcess && hermesListener != null) {
             Hermes.setHermesListener(hermesListener);
         } else {
@@ -269,6 +266,10 @@ public class HermesEventBus {
         return mEventBus.hasSubscriberForEvent(eventClass);
     }
 
+    public static class Service extends HermesService {
+
+    }
+
     public class HermesListener extends xiaofei.library.hermes.HermesListener {
 
         @Override
@@ -289,25 +290,33 @@ public class HermesEventBus {
             //    (2) In the previous version, mRemoteApis was set null when the service is disconnected.
             //        Then a NPE was thrown when the service is reconnected.
             /**
-            Log.v(TAG, "Hermes connected in Process " + Process.myPid());
-            mRemoteApis.set(Hermes.getInstanceInService(service, IMainService.class));
-            mRemoteApis.action(new Action<IMainService>() {
-                @Override
-                public void call(IMainService o) {
-                    o.register(Process.myPid(), SubService.getInstance());
-                }
+             Log.v(TAG, "Hermes connected in Process " + Process.myPid());
+             mRemoteApis.set(Hermes.getInstanceInService(service, IMainService.class));
+             mRemoteApis.action(new Action<IMainService>() {
+            @Override public void call(IMainService o) {
+            o.register(Process.myPid(), SubService.getInstance());
+            }
             });
              */
 
 //            Log.v(TAG, "Hermes " + Service.class.getCanonicalName());
 //            Log.v(TAG, "Hermes " + service.getCanonicalName());
-            if(service.getCanonicalName().equals(Service.class.getCanonicalName())) {
+            if (service.getCanonicalName().equals(Service.class.getCanonicalName())) {
                 IMainService mainService = Hermes.getInstanceInService(service, IMainService.class);
-                mainService.register(Process.myPid(), SubService.getInstance());
-                mRemoteApis.set(mainService);
-                mState = STATE_CONNECTED;
+
+                if (mainService != null) {
+                    try {
+                        mainService.register(Process.myPid(), SubService.getInstance());
+                        mRemoteApis.set(mainService);
+                        mState = STATE_CONNECTED;
+                    } catch (Throwable e) {
+                        Log.e(TAG, "Error: onHermesConnected", e);
+                        mState = STATE_DISCONNECTED;
+                    }
+                }
             }
-            if(hermesListener != null){
+
+            if (hermesListener != null) {
                 hermesListener.onHermesConnected(service);
             }
         }
@@ -315,26 +324,28 @@ public class HermesEventBus {
         @Override
         public void onHermesDisconnected(Class<? extends HermesService> service) {
             // Log.v(TAG, "Hermes disconnected in Process " + Process.myPid());
-            if(service.getCanonicalName().equals(Service.class.getCanonicalName())) {
+            if (service.getCanonicalName().equals(Service.class.getCanonicalName())) {
                 mState = STATE_DISCONNECTED;
                 mRemoteApis.action(new Action<IMainService>() {
                     @Override
                     public void call(IMainService o) {
-                        o.unregister(Process.myPid());
+                        try {
+                            if (o != null) {
+                                o.unregister(Process.myPid());
+                            }
+                        } catch (Throwable e) {
+                            Log.e(TAG, "Error: onHermesDisconnected", e);
+                        }
                     }
                 });
             }
-            if(hermesListener != null){
+            if (hermesListener != null) {
                 hermesListener.onHermesDisconnected(service);
             }
             // I deleted the statement which assigns null to mRemoteApis.
             // Then, if the service is disconnected, the pending events will still be posted
             // but this process will not receive them any more.
         }
-    }
-
-    public static class Service extends HermesService {
-
     }
 
 }
